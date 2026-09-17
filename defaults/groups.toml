@@ -1,0 +1,128 @@
+# Groups and colours for the keyboard map -- the shipped default.
+#
+# This file is read only when no user copy exists. Lookup order:
+#
+#   ~/.config/schmunk42-shortkeyz/groups.toml          user's own copy
+#   ~/.config/schmunk42-keyboard-color/groups.toml    the LED daemon's copy
+#   <plugin>/defaults/groups.toml                     this one
+#
+#   [meta]       colorspace = "screen" means: the colours apply as written
+#                here. Without it, "led" is assumed and the values are
+#                converted back for the screen -- the LED daemon's file
+#                carries LED colours, and those are unbearable as a full
+#                fill on a display.
+#   [groups]     group name -> colour. A new group is created by giving it
+#                a colour here and using it below.
+#   [shortcuts]  shortcut -> group. What is set here wins over the
+#                automatic classification that infers a group from the
+#                Omarchy module a binding lives in. An empty value means
+#                "no group", explicitly.
+#
+# Key names are the ones from `hyprctl binds`, case-insensitive; ENTER, ESC,
+# PGUP, DEL, ALTGR are accepted as aliases.
+
+[meta]
+colorspace = "screen"
+ungrouped = "#9d9d9d"
+
+[groups]
+apps = "#c44c41"
+navigation = "#41c456"
+clipboard = "#c4ac41"
+layout = "#4183c4"
+special = "#c47f41"
+[shortcuts]
+# These three are already classified correctly without an entry -- they
+# are here as a pattern for the syntax:
+# "SUPER + RETURN"   = "apps"
+# "SUPER + Q"        = "navigation"
+# "SUPER + CTRL + V" = "clipboard"
+#
+# Explicitly ungrouped, despite the automatic classification:
+# "SUPER + A"        = ""
+
+# ---------------------------------------------------------------------------
+# layout (blue) -- anything that rearranges the workspace itself
+#
+# The line against navigation (green) is: green moves your gaze elsewhere
+# (a different workspace, a different window), blue rearranges what is
+# already there. That is why the focus arrows SUPER + LEFT/RIGHT/UP/DOWN
+# stay green while the swap arrows SUPER + SHIFT + ... are blue: they move
+# the window.
+#
+# Added 2026-09-08. The twelve resize keys on ssharp/dead_acute had been
+# under navigation since 2026-09-07 and moved here -- they size a window,
+# which is rearranging, not switching.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# special (orange) -- the scratchpad
+#
+# Its own group rather than layout: the scratchpad is a place beside the
+# workspace, not a rearrangement within it. Added 2026-09-08.
+# ---------------------------------------------------------------------------
+
+"SUPER + S"                         = "special"
+"SUPER + ALT + S"                   = "special"
+
+# The second scratchpad (special:docs, since 2026-09-10) lights the same
+# colour -- it is the same kind of place beside the workspace, just a
+# second one.
+"SUPER + D"                         = "special"
+"SUPER + ALT + D"                   = "special"
+
+# Switch layout and tiling mode
+"SUPER + L"                         = "layout"
+"SUPER + G"                         = "layout"
+"SUPER + J"                         = "layout"
+"SUPER + ALT + J"                   = "layout"
+"SUPER + T"                         = "layout"
+"SUPER + F"                         = "layout"
+"SUPER + ALT + F"                   = "layout"
+
+# Release a window from the grid, or fix its geometry
+"SUPER + O"                         = "layout"
+"SUPER + P"                         = "layout"
+"SUPER + CTRL + F"                  = "layout"
+"SUPER + CTRL + J"                  = "layout"
+"SUPER + SHIFT + BACKSPACE"         = "layout"
+"SUPER + CTRL + BACKSPACE"          = "layout"
+"SUPER + HOME"                      = "layout"
+"SUPER + ALT + HOME"                = "layout"
+
+# Move a window within the grid (not: move focus)
+"SUPER + SHIFT + LEFT"              = "layout"
+"SUPER + SHIFT + RIGHT"             = "layout"
+"SUPER + SHIFT + UP"                = "layout"
+"SUPER + SHIFT + DOWN"              = "layout"
+
+# Window size
+"SUPER + ssharp"                    = "layout"
+"SUPER + dead_acute"                = "layout"
+"SUPER + SHIFT + ssharp"            = "layout"
+"SUPER + SHIFT + dead_acute"        = "layout"
+"SUPER + ALT + ssharp"              = "layout"
+"SUPER + ALT + dead_acute"          = "layout"
+"SUPER + SHIFT + ALT + ssharp"      = "layout"
+"SUPER + SHIFT + ALT + dead_acute"  = "layout"
+"SUPER + CTRL + ssharp"             = "layout"
+"SUPER + CTRL + dead_acute"         = "layout"
+"SUPER + CTRL + SHIFT + ssharp"     = "layout"
+"SUPER + CTRL + SHIFT + dead_acute" = "layout"
+
+# Window groups
+"SUPER + SHIFT + G"                 = "layout"
+"SUPER + ALT + G"                   = "layout"
+"SUPER + ALT + LEFT"                = "layout"
+"SUPER + ALT + RIGHT"               = "layout"
+"SUPER + ALT + UP"                  = "layout"
+"SUPER + ALT + DOWN"                = "layout"
+"SUPER + ALT + TAB"                 = "layout"
+"SUPER + SHIFT + ALT + TAB"         = "layout"
+"SUPER + CTRL + LEFT"               = "layout"
+"SUPER + CTRL + RIGHT"              = "layout"
+"SUPER + ALT + 1"                   = "layout"
+"SUPER + ALT + 2"                   = "layout"
+"SUPER + ALT + 3"                   = "layout"
+"SUPER + ALT + 4"                   = "layout"
+"SUPER + ALT + 5"                   = "layout"

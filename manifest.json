@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.schmunk42.shortkeyz",
+  "name": "Shortkeyz",
+  "version": "0.1.0",
+  "author": "schmunk42",
+  "license": "MIT",
+  "description": "Fullscreen keyboard map of your Hyprland bindings — coloured by group, one tab per modifier level, held keys framed live. Early release: the board geometry of your keyboard is a draft you are expected to correct.",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Keyboard.qml"
+  }
+}

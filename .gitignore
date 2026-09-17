@@ -1,0 +1,4 @@
+# Sicherungen, die beim Editieren am laufenden System entstehen
+*.bak.*
+*.bak2.*
+__pycache__/
