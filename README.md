@@ -8,6 +8,8 @@ white while it is down.
 It answers the question a keybinding list answers badly — not "what does
 `SUPER + G` do" but "what is on `SUPER` at all".
 
+![Screenshot](preview.png)
+
 ## Install
 
 ```bash
