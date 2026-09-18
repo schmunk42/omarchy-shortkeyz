@@ -110,13 +110,12 @@ CATEGORY_SOURCES = {
     "clipboard": (OMARCHY_PATH + "/default/hypr/bindings/clipboard.lua",),
 }
 
-# What the files above don't cover: bindings of one's own don't live in any
-# Omarchy file. Values are the binding's own description, lower-cased,
-# matched verbatim -- change the description on the local binding and this
-# entry silently stops matching, so keep the two in sync.
-EXTRA_CATEGORIES = {
-    "apps": frozenset({"default-apps dieses workspace"}),
-}
+# Descriptions to classify beyond what the files above cover, lower-cased,
+# matched verbatim. Deliberately empty: a description of one's own binding
+# belongs in the user's groups.toml under [shortcuts], not in shipped code
+# -- the one entry that used to sit here went stale the moment its binding
+# was reworded, and nobody noticed because it simply stopped matching.
+EXTRA_CATEGORIES = {}
 
 # Contains "workspace" but isn't navigation.
 NOT_WORKSPACE = frozenset({"toggle workspace layout"})
