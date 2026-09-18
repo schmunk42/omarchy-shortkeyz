@@ -23,8 +23,12 @@ import sys
 
 try:
     import tomllib
-except ModuleNotFoundError:  # Python < 3.11
-    tomllib = None
+except ModuleNotFoundError:
+    # Python < 3.11. Stop here rather than "carry on without groups.toml":
+    # the file would be skipped, the colour space would fall back to LED,
+    # and the defaults would get converted a second time -- three silent
+    # wrongs that look like a working overlay with odd colours.
+    sys.exit("shortkeyz: Python 3.11 or newer is required (tomllib)")
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 PLUGIN = os.path.dirname(HERE)
@@ -86,10 +90,14 @@ MODIFIER_ORDER = ((64, "SUPER"), (4, "CTRL"), (8, "ALT"), (1, "SHIFT"),
 
 MODIFIER_MASKS = {name: mask for mask, name in MODIFIER_ORDER}
 
-# Modifier names as they may appear in groups.toml.
+# Modifier names as they may appear in groups.toml and in the attribution
+# script. One vocabulary for both: the strict parser below rejects anything
+# else, and "altgr" used to be missing here while the attribution script
+# spelled its level exactly that way -- ALTGR + P silently lost its mark.
 MODIFIER_NAMES = {
     "shift": 1, "ctrl": 4, "control": 4, "strg": 4,
     "alt": 8, "mod1": 8, "super": 64, "win": 64, "mod4": 64,
+    "altgr": 128, "mod5": 128,
 }
 
 # Where the classification comes from: the file that defines the binding.
@@ -120,26 +128,53 @@ WORKSPACE_WORD = re.compile(r"workspace", re.IGNORECASE)
 # First argument of o.bind is the key, second is the description.
 BIND_DESCRIPTION = re.compile(r'o\.bind\(\s*"[^"]*"\s*,\s*"([^"]*)"')
 
+# Built-in colours, in SCREEN values -- the same five the shipped
+# groups.toml carries, and exactly unboost() of the LED daemon's defaults
+# (#ff1400, #00ff28, #ffd000, #0080ff, #ff7800, #cccccc). They are never run
+# through unboost() again, whatever colour space a groups.toml declares:
+# only values read from a file are in that file's space.
 DEFAULT_GROUP_COLORS = {
-    "apps": "#ff1400",
-    "navigation": "#00ff28",
-    "clipboard": "#ffd000",
-    "layout": "#0080ff",
-    "special": "#ff7800",
+    "apps": "#c44c41",
+    "navigation": "#41c456",
+    "clipboard": "#c4ac41",
+    "layout": "#4183c4",
+    "special": "#c47f41",
 }
-DEFAULT_UNGROUPED = "#cccccc"
+DEFAULT_UNGROUPED = "#9d9d9d"
+
+
+# Everything log() reports, in order. keyboard-map.py copies this list into
+# the document's `warnings`, so a broken groups.toml or a missing Omarchy
+# module reaches the overlay's status line and not only stderr -- which the
+# shell's Process would otherwise have to collect separately.
+MESSAGES = []
 
 
 def log(message):
+    MESSAGES.append(message)
     print("shortkeyz: " + message, file=sys.stderr, flush=True)
 
 
 def hyprctl(*args):
+    """`hyprctl -j …` as parsed JSON, or None -- and None is logged.
+
+    Silent None was the worst hole in this module: with Hyprland not
+    reachable, the overlay drew a board with zero bindings and no message,
+    indistinguishable from a machine with no bindings."""
     try:
         done = subprocess.run(["hyprctl", "-j", *args], capture_output=True,
                               timeout=5, text=True)
+    except (OSError, subprocess.SubprocessError) as error:
+        log(f"hyprctl {' '.join(args)}: {error}")
+        return None
+    if done.returncode != 0:
+        log(f"hyprctl {' '.join(args)}: exit {done.returncode}"
+            f" {done.stderr.strip()}")
+        return None
+    try:
         return json.loads(done.stdout)
-    except (OSError, ValueError, subprocess.SubprocessError):
+    except ValueError as error:
+        log(f"hyprctl {' '.join(args)}: not JSON: {error}")
         return None
 
 
@@ -183,6 +218,20 @@ def unboost(rgb, saturation_factor=SATURATION, value_factor=VALUE):
     return tuple(out)
 
 
+def parse_modifiers(parts):
+    """["super", "ctrl"] -> 68. None as soon as one part isn't a modifier.
+
+    None rather than "skip the unknown part": a typo like "STRG + V" must
+    not quietly become modmask 0 and land on the wrong line of the map."""
+    modmask = 0
+    for part in parts:
+        bit = MODIFIER_NAMES.get(str(part).strip().lower())
+        if bit is None:
+            return None
+        modmask |= bit
+    return modmask
+
+
 def parse_shortcut(spec):
     """"SUPER + CTRL + V" -> (68, "v"). None if the last part is missing."""
     parts = [part.strip().lower() for part in str(spec).split("+")]
@@ -190,12 +239,9 @@ def parse_shortcut(spec):
     if not parts:
         return None
 
-    modmask = 0
-    for part in parts[:-1]:
-        bit = MODIFIER_NAMES.get(part)
-        if bit is None:
-            return None
-        modmask |= bit
+    modmask = parse_modifiers(parts[:-1])
+    if modmask is None:
+        return None
 
     key = parts[-1]
     return (modmask, ALIASES.get(key, key))
@@ -262,12 +308,17 @@ def group_rules():
     rules = {"colors": {}, "overrides": {}, "auto": categories(),
              "source": None, "colorspace": "led"}
 
-    raw = dict(DEFAULT_GROUP_COLORS)
-    ungrouped = DEFAULT_UNGROUPED
+    # name -> (hex, colour space). The built-ins are screen values; whatever
+    # the file contributes is in the file's declared space. Keeping the
+    # space per value is the whole point: a "screen" file that leaves one
+    # group unnamed must not get that group's default pushed through
+    # unboost(), and an LED file must not get the defaults left un-converted.
+    raw = {name: (token, "screen") for name, token in DEFAULT_GROUP_COLORS.items()}
+    ungrouped = (DEFAULT_UNGROUPED, "screen")
     config = {}
 
     path = groups_file()
-    if path and tomllib is not None:
+    if path:
         rules["source"] = path
         try:
             with open(path, "rb") as handle:
@@ -278,18 +329,22 @@ def group_rules():
 
     meta = config.get("meta") or {}
     rules["colorspace"] = str(meta.get("colorspace") or "led").strip().lower()
+    if rules["colorspace"] not in ("led", "screen"):
+        log(f"{path}: [meta] colorspace = {rules['colorspace']!r}"
+            " is neither \"led\" nor \"screen\", assuming led")
+        rules["colorspace"] = "led"
 
     for name, token in (config.get("groups") or {}).items():
         if parse_hex(token):
-            raw[str(name).strip().lower()] = str(token)
+            raw[str(name).strip().lower()] = (str(token), rules["colorspace"])
         else:
             log(f"{path}: [groups] {name} = {token!r} is not a colour")
     if parse_hex(meta.get("ungrouped")):
-        ungrouped = str(meta["ungrouped"])
+        ungrouped = (str(meta["ungrouped"]), rules["colorspace"])
 
-    for name, token in list(raw.items()) + [("", ungrouped)]:
+    for name, (token, space) in list(raw.items()) + [("", ungrouped)]:
         rgb = parse_hex(token)
-        if rules["colorspace"] == "screen":
+        if space == "screen":
             rules["colors"][name] = {"led": None, "screen": hexcolor(rgb)}
         else:
             rules["colors"][name] = {"led": hexcolor(rgb),

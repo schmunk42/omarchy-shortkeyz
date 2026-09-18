@@ -1,4 +1,4 @@
-# Sicherungen, die beim Editieren am laufenden System entstehen
+# Backups left behind when editing on the live system
 *.bak.*
 *.bak2.*
 __pycache__/

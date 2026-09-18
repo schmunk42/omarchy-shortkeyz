@@ -99,10 +99,6 @@ def load_module(path, name):
     return module
 
 
-def hexcolor(rgb):
-    return "#%02x%02x%02x" % tuple(rgb)
-
-
 # ---------------------------------------------------------------------------
 # Boards
 # ---------------------------------------------------------------------------
@@ -240,13 +236,18 @@ def read_keymap(warnings):
     if raw.returncode != 0:
         warnings.append(f"xkbcli dump-keymap-wayland: exit {raw.returncode}")
         return {}, {}
+    return parse_keymap(raw.stdout)
 
+
+def parse_keymap(text):
+    """(types, keys) from the text of an xkb keymap. Pure, so it can be
+    tested against a checked-in dump without a Wayland session."""
     types = {}
     keys = {}
     current_type = None
     current_key = None
 
-    for line in raw.stdout.splitlines():
+    for line in text.splitlines():
         head = TYPE_HEAD.match(line)
         if head:
             current_type = head.group("name")
@@ -321,7 +322,14 @@ def build_symbol_index(keys, types, board_keys, aliases):
         if fn:
             index.setdefault(fn.lower(), (entry["xkb"], "Fn"))
 
-    placed = {entry["xkb"] for entry in board_keys}
+    # Board order, not a set: two keys can share a level-1 keysym (on the
+    # author's machine <CAPS> is Control_L, and so is <LCTL>), and with a
+    # set the winner would depend on hash seeding. In list order the board
+    # file decides -- the earlier entry wins.
+    placed = []
+    for entry in board_keys:
+        if entry["xkb"] not in placed:
+            placed.append(entry["xkb"])
 
     # 2) Level 1 of every key on the board
     for name in placed:
@@ -362,17 +370,26 @@ def level_sort_key(modmask):
     return (bin(modmask).count("1"), modmask)
 
 
-def source_index(doc):
+def source_index(doc, warnings):
     """(modmask, key) -> character for a binding's provenance."""
     table = {}
     marks = (("CHANGED", "⚠️"), ("OWN", "👤"), ("REBOUND", "🔁"))
+    # The doc script spells the empty level out ("Ohne Modifier" on the
+    # author's machine); it is the one spec that is not a modifier list.
+    none_spec = getattr(doc, "NO_MODIFIER", None)
     for attribute, mark in marks:
         for spec, keys in getattr(doc, attribute, {}).items():
-            modmask = 0
-            for part in str(spec).split("+"):
-                part = part.strip().upper()
-                if part and part in hyprkeys.MODIFIER_MASKS:
-                    modmask |= hyprkeys.MODIFIER_MASKS[part]
+            if spec == none_spec:
+                modmask = 0
+            else:
+                parts = [p for p in str(spec).split("+") if p.strip()]
+                modmask = hyprkeys.parse_modifiers(parts)
+            if modmask is None:
+                # Skip rather than attribute to modmask 0: a typo in the doc
+                # script would otherwise mark the wrong key on the wrong
+                # level, and nobody would see why.
+                warnings.append(f"attribution: unknown modifier in {spec!r}")
+                continue
             for key in keys:
                 table[(modmask, str(key).lower())] = mark
     return table
@@ -410,7 +427,7 @@ def build(wanted_board):
     rules = daemon.group_rules()
     groups = rules["colors"]
 
-    sources = source_index(doc) if doc else {}
+    sources = source_index(doc, warnings) if doc else {}
 
     # The board's keys, enriched with a label and character levels
     keys_out = []
@@ -449,7 +466,14 @@ def build(wanted_board):
     # Bindings per level
     levels = {}
     unplaced = []
-    for bind in daemon.hyprctl("binds") or []:
+    binds = daemon.hyprctl("binds")
+    if binds is None:
+        # Not `or []` and move on: an empty board with no message is the
+        # one outcome the overlay must never produce.
+        warnings.append("no bindings: hyprctl -j binds gave no answer"
+                        " -- is Hyprland running?")
+        binds = []
+    for bind in binds:
         key = str(bind.get("key") or "")
         if not key:
             continue
@@ -479,12 +503,12 @@ def build(wanted_board):
 
         # If the keysym only exists on a higher level, the binding cannot
         # be triggered on this machine and therefore has no place on the
-        # board. `input.resolve_binds_by_sym` is false: Hyprland compares
-        # keycode and modmask, and `SUPER + SHIFT + SLASH` would need the
-        # keycode of <AE07> without Shift -- a combination that never
-        # occurs. Measured and written up in
-        # issues/0018-slash-bindungen-tot-auf-de-layout.md (the doc repo,
-        # German).
+        # board. With `input.resolve_binds_by_sym` off (Omarchy's default)
+        # Hyprland compares keycode and modmask, and `SUPER + SHIFT + SLASH`
+        # would need the keycode of <AE07> without Shift -- a combination
+        # that never occurs on a German layout, where `/` is Shift+7.
+        # Measured on 2026-09-08: none of Omarchy's three `slash` bindings
+        # ever fires there.
         #
         # Landing on the board here would mean hiding the reachable
         # binding on the same key: `SUPER + 7` showed "Monitor scaling up"
@@ -531,6 +555,13 @@ def build(wanted_board):
             "keys": bucket,
         })
 
+    # Whatever hyprkeys logged on the way -- a broken groups.toml, a missing
+    # Omarchy module, a shortcut that didn't parse -- travels with the
+    # document. The overlay only ever sees stdout; stderr would be lost.
+    for message in daemon.MESSAGES:
+        if message not in warnings:
+            warnings.append(message)
+
     document = {
         "generated": datetime.datetime.now(datetime.timezone.utc)
                      .strftime("%Y-%m-%dT%H:%M:%SZ"),
@@ -574,9 +605,10 @@ def generic_drift():
             shipped = json.load(handle)
     except (OSError, json.JSONDecodeError) as error:
         return f"unreadable: {error}"
-    warnings = []
-    _, keymap = read_keymap(warnings)
-    fresh = boardgen.build(keymap, stamp="")
+    # No keymap needed: without a device, build() places the whole reference
+    # and never looks one up -- reading it would cost an xkbcli call per
+    # --check for nothing.
+    fresh = boardgen.build({}, stamp="")
     for document in (shipped, fresh):
         document.pop("generatedWith", None)
     if shipped == fresh:
@@ -630,10 +662,10 @@ def check(document):
     print(f"\nKeys with no keymap entry:       {len(blank)}"
           + ("  " + ", ".join(blank) if blank else ""))
 
-    # No binding of a higher level may still be on the board -- since
-    # change-0100-05 (the doc repo) they go into the overflow list instead.
-    # This line stays as a check: if anything shows up here, the filter
-    # above has stopped working.
+    # No binding of a higher level may still be on the board -- they go
+    # into the overflow list instead (see the `needs` branch in build()).
+    # This line stays as a check: if anything shows up here, that filter
+    # has stopped working.
     shifted = []
     shared = []
     for level in document.get("levels", []):

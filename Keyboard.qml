@@ -44,10 +44,11 @@ Item {
   // The modmask of the modifiers currently held, 0 if none.
   //
   // That this works at all is the difference between the overlay and the
-  // compositor: on the author's machine, Hyprland's keybind manager makes
-  // nothing of releasing a key (see the doc repo's CLAUDE.md), while Qt
-  // gets press and release cleanly -- the window holds exclusive keyboard
-  // focus.
+  // compositor: a Hyprland binding with `release = true` never fires from
+  // a physical keyboard on the author's machine (measured 2026-09-10, the
+  // release does reach `input.keyboard.key`, the keybind manager ignores
+  // it), while Qt gets press and release cleanly -- the window holds
+  // exclusive keyboard focus.
   property int liveMask: 0
 
   // What is shown: the level of the held modifier, otherwise the chosen
@@ -130,7 +131,12 @@ Item {
 
   property string wantedLevel: ""
 
+  // Set when the payload named a level that doesn't exist. Shown in the
+  // status line: `{"level":"SUEPR"}` used to open level 0 without a word.
+  property string levelWarning: ""
+
   function applyWantedLevel() {
+    root.levelWarning = ""
     if (root.wantedLevel === "")
       return
     for (var i = 0; i < root.levels.length; i++) {
@@ -139,6 +145,8 @@ Item {
         return
       }
     }
+    if (root.levels.length > 0)
+      root.levelWarning = "no level \"" + root.wantedLevel + "\""
   }
 
   function close() {
@@ -157,9 +165,12 @@ Item {
       root.shell.hide((root.manifest && root.manifest.id) || "io.github.schmunk42.shortkeyz")
   }
 
-  function toggle() {
+  // The host's own `shell toggle` never calls this (it summons, which calls
+  // open()); kept for anyone driving the item directly, and it forwards the
+  // payload so a level request isn't lost on that path either.
+  function toggle(payloadJson) {
     if (root.opened) root.dismiss()
-    else root.open("{}")
+    else root.open(payloadJson || "{}")
   }
 
   // Rebuilt on every open. The helper measured takes 105 to 142 ms, and
@@ -274,23 +285,31 @@ Item {
     // screen.
     command: ["timeout", "-k", "2", "5", root.helper]
 
-    stdout: StdioCollector {
-      onStreamFinished: {
-        var raw = String(text || "").trim()
-        root.loading = false
-        if (raw === "") {
-          root.loadError = "The helper returned nothing: " + root.helper
-          return
-        }
-        try {
-          root.model = JSON.parse(raw)
-          root.loadError = ""
-          if (root.manualIndex >= root.levels.length)
-            root.manualIndex = 0
-          root.applyWantedLevel()
-        } catch (e) {
-          root.loadError = "Helper output could not be parsed: " + e
-        }
+    // Both streams, and the result is read at exit rather than when stdout
+    // closes: stderr is where a Python traceback or a `sys.exit(message)`
+    // lands, and without it a helper that died before printing JSON showed
+    // up as "returned nothing" with no hint why.
+    stdout: StdioCollector { id: helperOut; waitForEnd: true }
+    stderr: StdioCollector { id: helperErr; waitForEnd: true }
+
+    onExited: function (exitCode, exitStatus) {
+      var raw = String(helperOut.text || "").trim()
+      var err = String(helperErr.text || "").trim()
+      root.loading = false
+      if (raw === "") {
+        root.loadError = "The helper returned nothing (exit " + exitCode + "): "
+                       + (err !== "" ? err.split("\n").pop() : root.helper)
+        return
+      }
+      try {
+        root.model = JSON.parse(raw)
+        root.loadError = ""
+        if (root.manualIndex >= root.levels.length)
+          root.manualIndex = 0
+        root.applyWantedLevel()
+      } catch (e) {
+        root.loadError = "Helper output could not be parsed: " + e
+                       + (err !== "" ? " -- " + err.split("\n").pop() : "")
       }
     }
   }
@@ -693,6 +712,19 @@ Item {
                      + (board && board.generic
                         ? "  ·  your own board:  " + root.helper + " --new-board"
                         : (board && !board.present ? "  (not attached)" : ""))
+
+            // Whatever the helper could not do -- no hyprctl answer, an
+            // unreadable board file, a groups.toml that didn't parse -- is
+            // said here, ahead of the hints. A partial result that looks
+            // like a whole one is the failure this overlay must not have.
+            var warnings = root.model.warnings || []
+            var problems = []
+            if (root.levelWarning !== "")
+              problems.push(root.levelWarning)
+            for (var w = 0; w < warnings.length; w++)
+              problems.push(warnings[w])
+            if (problems.length > 0)
+              return "⚠ " + problems.join("  ·  ") + "   ·   " + head
 
             if (boardItem.hoveredKey === "")
               return head + "   ·   Tab switches level, R reloads, Esc closes"

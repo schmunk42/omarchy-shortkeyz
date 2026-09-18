@@ -47,6 +47,13 @@ meant as written. Without that key the values are treated as LED colours and
 toned down for the screen — that way a `groups.toml` written for keyboard
 backlighting can be reused unchanged.
 
+The shipped `groups.toml` and a few key labels assume a **German layout**:
+the twelve resize entries sit on `ssharp` and `dead_acute` (the two keys right
+of `0`), and umlauts and `ß` are printed as such. On another layout those
+entries simply never match — nothing breaks, the keys just show their own
+keysym and no group. Copy the file and rename the keys for your layout;
+`hyprctl binds` tells you what Hyprland calls them.
+
 Inspect what was loaded and what could not be placed:
 
 ```bash
@@ -126,6 +133,30 @@ The plugin starts no service, opens no socket and reaches no network. It runs
 one short-lived Python process per open, reads `~/.config`, `/usr/share/omarchy`
 and `/sys/class/input`, and writes nothing — except `--new-board`, which writes
 the one board file it is asked for.
+
+One thing it does beyond reading: if `~/.local/bin/schmunk42-keybindings-doc`
+exists, the helper **imports it as a Python module** on every open, to fill the
+small provenance mark on each key (changed / own / re-registered). That file
+is the author's own tooling and won't exist on your machine; if you create a
+file by that name, be aware it gets executed as your user. Errors in it are
+caught and reported in the overlay's status line, not fatal.
+
+What the helper could not do — no answer from `hyprctl`, an unreadable board
+file, a `groups.toml` that doesn't parse — is shown as a `⚠` line in the
+overlay and listed by `--check`, never silently turned into an empty board.
+
+## Tests
+
+The parsing and colour maths run without a Wayland session, against a
+checked-in keymap dump:
+
+```bash
+python3 -B -m unittest discover -s tests -v
+```
+
+`-B` matters when the checkout is the installed plugin: a `__pycache__` inside
+the plugin directory makes Omarchy reload it. The same command runs in CI on
+every push.
 
 ## Remove
 

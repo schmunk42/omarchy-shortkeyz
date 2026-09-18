@@ -4,9 +4,8 @@
 # Generate board drafts: the key set the device itself reports, laid out on
 # a generic ISO-105 geometry.
 #
-# What is and isn't possible here is measured and spelled out in
-# `docs/tastatur-overlay.md` (the doc repo, German): WHICH keys a keyboard
-# has, it says itself via `/sys/class/input/event*/device/capabilities/key`
+# What is and isn't possible here is measured, not assumed: WHICH keys a
+# keyboard has, it says itself via `/sys/class/input/event*/device/capabilities/key`
 # -- world-readable, no `input` group needed. WHERE those keys sit, no
 # system source says: `xkeyboard-config` has neither TUXEDO nor Clevo, and
 # the keymap describes meanings, not positions. The result is therefore a
