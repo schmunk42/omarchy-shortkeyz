@@ -714,18 +714,22 @@ def new_board(args):
     """Write a board draft. Written exclusively to
     `~/.config/schmunk42-shortkeyz/boards/` -- never into the plugin, whose
     directory sits under Omarchy's inotify reload."""
-    warnings = []
-    _, keymap = read_keymap(warnings)
-    for warning in warnings:
-        log(f"WARNING: {warning}")
-    if not keymap:
-        return 1
-
+    # The generic board needs neither a device nor the keymap: it places the
+    # whole reference. Only a device draft looks keycodes up -- so only then
+    # is xkbcli required, and a machine without it (CI, for one) can still
+    # regenerate the shipped file.
     device = None
+    keymap = {}
     if not args.generic:
         device, error = boardgen.pick_device(args.device)
         if error:
             log(error)
+            return 1
+        warnings = []
+        _, keymap = read_keymap(warnings)
+        for warning in warnings:
+            log(f"WARNING: {warning}")
+        if not keymap:
             return 1
 
     board = boardgen.build(keymap, device=device, board_id=args.id,
