@@ -10,7 +10,7 @@ It answers the question a keybinding list answers badly — not "what does
 
 ![Screenshot](preview.png)
 
-*Big Thanks to @spheenik for the idea.*
+*Big Thanks to [@spheenik](https://github.com/spheenik) for the idea.*
 
 ## Install
 
